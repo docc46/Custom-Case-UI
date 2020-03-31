@@ -1,0 +1,142 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+
+  <title>Custom Case UI</title>
+
+  <script type="text/javascript" src="jquery-3.1.0.js"></script>
+
+</head>
+
+<body>  
+    
+<!-- login form -->
+<form name="login" id="loginform">
+    <input type="text" name="login" id="flogin">
+    <input type="password" name="password" id="fpass">
+    <input type="submit" value="Login">
+</form>
+    
+<!-- new case form -->
+<div id="maindiv" hidden="true">
+    <form name="case" id="caseform">
+        Record type: <select id="rectypeselect"></select><br>
+        Case origin: <select id="originselect"></select><br>
+        Case status: <select id="statusselect"></select><br>
+        <input type="submit" value="Create">
+    </form>
+</div>
+<div id="result"></div>
+    
+<script type="text/javascript">
+    
+//  SET YOUR API CREDENTIALS
+    const client_secret = "";
+    const client_id = "";
+    
+    var access_token;
+    var instance_url;
+    var originvalues = new Map();
+    var statusvalues = new Map();
+        
+//  login and set authorization header
+    $("#loginform").submit(function(e){
+        e.preventDefault();
+        $.post("https://login.salesforce.com/services/oauth2/token",
+            {
+             
+                grant_type: "password",
+                username: $("#flogin").val(),
+                password: $("#fpass").val(),
+                client_secret: client_secret,
+                client_id: client_id
+            },
+            function(data,status){
+                access_token = data.access_token;
+                instance_url = data.instance_url;
+                
+                $('#maindiv').show();
+                
+                $.ajaxSetup({
+                    beforeSend: function(xhr) {
+                        xhr.setRequestHeader('Authorization', 'Bearer ' + access_token);
+                    }
+                });
+                getobjectinfo();
+                
+            });
+        $(this).hide();    
+    });
+    
+    function getobjectinfo(){
+        $.get(instance_url + '/services/data/v48.0/ui-api/object-info/Case',
+             {},
+             function(data){
+                for(const recordtype of Object.values(data.recordTypeInfos)){
+                    if (recordtype.master == false){
+                        getoriginvalues(recordtype);
+                        getstatusvalues(recordtype);
+                        $('#rectypeselect').append('<option value="'+recordtype.recordTypeId+'">'+recordtype.name+'</option>');
+                    }
+                }
+        })
+    }
+    
+    function getoriginvalues(recordtype){
+        $.get(instance_url + '/services/data/v48.0/ui-api/object-info/Case/picklist-values/' + recordtype.recordTypeId + '/Origin',
+              {},
+              function(data){
+                originvalues.set(recordtype.recordTypeId, data.values);
+            });
+    }
+    
+    function getstatusvalues(recordtype){
+        $.get(instance_url + '/services/data/v48.0/ui-api/object-info/Case/picklist-values/' + recordtype.recordTypeId + '/Status',
+              {},
+              function(data){
+                statusvalues.set(recordtype.recordTypeId, data.values);
+            });
+    }
+        
+//  populate select options
+    $("#rectypeselect").on('change', function() {
+        var originoptions = "";
+        var statusoptions = "";
+        for(const origin of originvalues.get($(this).val())){
+            originoptions += "<option value='" + origin.value + "'>" + origin.label + "</option>";
+        }
+        for(const status of statusvalues.get($(this).val())){
+            statusoptions += "<option value='" + status.value + "'>" + status.label + "</option>";
+        }
+        $("#originselect").html(originoptions);
+        $("#statusselect").html(statusoptions);
+    });
+    
+//  submit new case
+    $("#caseform").submit(function(e){
+        e.preventDefault();
+        
+        var newcase = {
+            recordTypeId: $("#rectypeselect").val(),
+            origin: $("#originselect").val(),
+            status: $("#statusselect").val()
+        }
+        
+        $.ajax({
+            type: "POST",
+            url: instance_url + "/services/data/v48.0/sobjects/case",
+            data: JSON.stringify(newcase),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function(data){
+                $("#result").text("New record: " + data.id);
+            }
+        });
+    });
+
+</script>
+    
+</body>
+</html>
